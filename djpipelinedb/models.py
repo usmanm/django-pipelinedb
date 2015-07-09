@@ -61,49 +61,38 @@ class RequestEvent(Stream):
   err_name = models.TextField()
 
 
-class RequestLatency(ContinuousView):
+class RequestStats(ContinuousView):
   class Meta:
     managed = False
-  
+
   path = models.URLField()
   hour = models.DateTimeField()
+  num_requests = models.IntegerField()
+  num_failures = models.IntegerField()
+  unique_users = models.IntegerField()
+  unique_ips = models.IntegerField()
   # Our view script creates a field that stores 7 different percentiles:
   #  [1, 5, 10, 50, 90, 95, 99]
   p_latencies = ArrayField(models.FloatField(), size=7) 
 
 
-class RequestCount(ContinuousView):
-  class Meta:
-    managed = False
-
-  path = models.URLField()
-  user = models.TextField()
-  day = models.DateField()
-  count = models.IntegerField()
-
-
-class RequestFailure(ContinuousView):
-  class Meta:
-    managed = False
-
-  path = models.URLField()
-  day = models.DateField()
-  count = models.IntegerField()
-
-
 class ModelEvent(Stream):
-  type = models.CharField(max_length=2,
-                          choices=(('A', 'Added'),
+  class Meta:
+    managed = False
+
+  type = models.CharField(choices=(('A', 'Added'),
                                    ('D', 'Deleted'),
                                    ('U', 'Updated')))
   name = models.TextField()
   time = models.DateTimeField()
 
 
-class ModelChange(ContinuousView):
-  type = models.CharField(max_length=2,
-                          choices=(('A', 'Added'),
-                                   ('D', 'Deleted'),
-                                   ('U', 'Updated')))
+class ModelStats(ContinuousView):
+  class Meta:
+    managed = False
+
   name = models.TextField()
-  day = models.DateField()
+  hour = models.DateField()
+  num_added = models.IntegerField()
+  num_updated = models.IntegerField()
+  num_deleted = models.IntegerField()
