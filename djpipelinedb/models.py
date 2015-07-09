@@ -46,9 +46,6 @@ class ContinuousView(models.Model):
 class RequestEvent(Stream):
   """
   """
-  class Meta:
-    managed = False
-
   scheme = models.TextField()
   method = models.TextField()
   path = models.URLField()
@@ -62,8 +59,7 @@ class RequestEvent(Stream):
 
 
 class RequestStats(ContinuousView):
-  class Meta:
-    managed = False
+  PERCENTILES = [1, 5, 10, 50, 90, 95, 99]
 
   path = models.URLField()
   hour = models.DateTimeField()
@@ -71,28 +67,58 @@ class RequestStats(ContinuousView):
   num_failures = models.IntegerField()
   unique_users = models.IntegerField()
   unique_ips = models.IntegerField()
-  # Our view script creates a field that stores 7 different percentiles:
-  #  [1, 5, 10, 50, 90, 95, 99]
+  # Our view script creates a field that stores 7 different percentiles,
+  # see RequestStats.PERCENTILES
   p_latencies = ArrayField(models.FloatField(), size=7) 
 
+  @classmethod
+  def query(cls):
+    return """
+    SELECT
+      path::text,
+      hour(start_time::timestamptz) AS hour,
+      count(*) as num_requests,
+      count(*) FILTER (WHERE NOT success::bool) as num_failures,
+      count(DISTINCT user::int) AS unique_users,
+      count(DISTINCT ip::text) AS unique_ips,
+      percentile_cont(ARRAY[%s]) WITHIN GROUP
+        (ORDER BY EXTRACT(epoch FROM end_time::timestamptz - start_time))
+        AS p_latencies
+    FROM %s
+    GROUP BY (path, hour)
+    """ % (', '.join([str(i) for i in cls.PERCENTILES]),
+           RequestEvent._meta.db_table)
+
+
+class UserEngagementStats(ContinuousView):
+  user = models.ForeignKey(UserModel)
+  
+  
 
 class ModelEvent(Stream):
-  class Meta:
-    managed = False
-
   type = models.CharField(choices=(('A', 'Added'),
-                                   ('D', 'Deleted'),
-                                   ('U', 'Updated')))
+                                   ('U', 'Updated'),
+                                   ('D', 'Deleted')))
   name = models.TextField()
   time = models.DateTimeField()
 
 
 class ModelStats(ContinuousView):
-  class Meta:
-    managed = False
-
   name = models.TextField()
   hour = models.DateField()
   num_added = models.IntegerField()
   num_updated = models.IntegerField()
   num_deleted = models.IntegerField()
+
+  @classmethod
+  def query(cls):
+    return """
+    SELECT
+      name::text,
+      hour(start_time::timestamptz) AS hour,
+      count(*) FILTER (WHERE type::char = 'A') as num_added,
+      count(*) FILTER (WHERE type::char = 'U') as num_updated,
+      count(*) FILTER (WHERE type::char = 'D') as num_deleted,
+    FROM %s
+    GROUP BY (name, hour)
+    """ % ModelEvent._meta.db_table
